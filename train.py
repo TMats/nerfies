@@ -44,7 +44,7 @@ flags.DEFINE_enum('mode', None, ['jax_cpu', 'jax_gpu', 'jax_tpu'],
                   'Distributed strategy approach.')
 
 flags.DEFINE_string('base_folder', None, 'where to store ckpts and logs')
-flags.mark_flag_as_required('base_folder')
+# flags.mark_flag_as_required('base_folder')
 flags.DEFINE_string('data_dir', None, 'input data directory.')
 flags.DEFINE_multi_string('gin_bindings', None, 'Gin parameter bindings.')
 flags.DEFINE_multi_string('gin_configs', (), 'Gin config files.')
@@ -141,7 +141,7 @@ def main(argv):
       f.write(config_str)
 
   logging.info('Starting host %d. There are %d hosts : %s', jax.process_index(),
-               jax.process_count(), str(jax.process_indexs()))
+               jax.process_count(), str(jax.process_index()))
   logging.info('Found %d accelerator devices: %s.', jax.local_device_count(),
                str(jax.local_devices()))
   logging.info('Found %d total devices: %s.', jax.device_count(),
