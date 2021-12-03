@@ -15,6 +15,7 @@
 """Dataset definition and utility package."""
 from nerfies.datasets.core import *
 from nerfies.datasets.nerfies import NerfiesDataSource
+from nerfies.datasets.robomimic import RobomimicDataSource
 
 
 def from_config(spec, **kwargs):
@@ -23,5 +24,7 @@ def from_config(spec, **kwargs):
   ds_type = spec.pop('type')
   if ds_type == 'nerfies':
     return NerfiesDataSource(**spec, **kwargs)
+  elif ds_type == 'robomimic':
+    return RobomimicDataSource(**spec, **kwargs)
 
   raise ValueError(f'Unknown datasource type {ds_type!r}')

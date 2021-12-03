@@ -19,6 +19,7 @@ import itertools
 from typing import Any, Iterable, Optional, Sequence, Union
 
 from absl import logging
+from scipy.spatial.transform import Rotation as R
 from flax import jax_utils
 import jax
 import numpy as np
@@ -106,6 +107,62 @@ def load_camera(camera_path,
 
   return camera
 
+def load_mujoco_camera(camera_config,
+                       scale_factor=1.0,
+                       scene_center=None,
+                       scene_scale=None) -> cam.Camera:
+  """Loads camera and rays defined by the center pixels of a camera.
+
+  Args:
+    camera_path: a path to a camera file.
+    scale_factor: a factor to scale the camera image by.
+    scene_center: the center of the scene where the camera will be centered to.
+    scene_scale: the scale of the scene by which the camera will also be scaled
+      by.
+
+  Returns:
+    A Camera instance.
+  """
+  # position
+  position = np.asarray(camera_config['pos'])
+  # orientation
+  mujoco_quat = np.asarray(camera_config['quat'])
+  # wxyz (mujoco) -> xyzw (scipy)
+  mujoco_rot = R.from_quat(mujoco_quat[[1,2,3,0]]).as_matrix()
+  # TODO: check if this conversion is correct
+  mujoco_rot_to_camera_rot = np.array(
+    [[0., 1., 0.],
+    [1., 0., 0.],
+    [0., 0., -1.]],
+    dtype=np.float
+  )
+  world_to_camera_rot = mujoco_rot_to_camera_rot @ mujoco_rot
+  # focal length
+  # from https://github.com/ARISE-Initiative/robosuite/blob/2ea2280060033e11f1c1c5fb7c9c127324756005/robosuite/utils/camera_utils.py#L20-L36
+  f = 0.5 * camera_config['height'] / np.tan(camera_config['fovy'] * np.pi / 360)
+  # image size
+  image_size = np.array([camera_config['width'], camera_config['height']], dtype=np.int)
+  # principal point
+  # TODO: stop hardcoding (center point)
+  center_point = np.array([camera_config['width']/2., camera_config['height']/2.], dtype=np.float)
+
+  camera = cam.Camera(
+    orientation=world_to_camera_rot,
+    position=position,
+    focal_length=f,
+    principal_point=center_point,
+    image_size=image_size,
+  )
+
+  if scale_factor != 1.0:
+    camera = camera.scale(scale_factor)
+
+  if scene_center is not None:
+    camera.position = camera.position - scene_center
+  if scene_scale is not None:
+    camera.position = camera.position * scene_scale
+
+  return camera
 
 def prepare_tf_data(xs):
   """Convert a input batch from tf Tensors to numpy arrays."""
