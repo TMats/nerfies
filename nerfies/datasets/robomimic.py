@@ -116,16 +116,19 @@ class RobomimicDataSource(core.DataSource):
         "num_frames": self.data_hdf5['data'][key].attrs['num_samples'],
         "views": [view_name for view_name in self.data_hdf5['data'][key]['obs'].keys() if re.match(view_regrex, view_name)]
       }
-    self.demo_spec = demo_spec
+
     dataset_ids = []
+    global_frame_id = 0
     for demo_name, demo in demo_spec.items():
-      for view in demo['views']:
-        for frame_id in range(demo['num_frames']):
+      for frame_id in range(demo['num_frames']):
+        for view in demo['views']:
           dataset_ids.append({
             'demo': demo_name,
             'view': view,
             'frame': frame_id,
+            'global_frame_id': global_frame_id,
           })
+        global_frame_id += 1
     train_ids, val_ids = train_test_split(dataset_ids, test_size=0.2, random_state=seed)
     return train_ids, val_ids
 
@@ -153,13 +156,13 @@ class RobomimicDataSource(core.DataSource):
     raise NotImplementedError()
 
   def get_appearance_id(self, item_id):
-    raise NotImplementedError()
+    return item_id['global_frame_id']
 
   def get_camera_id(self, item_id):
-    raise NotImplementedError()
+    return int(re.sub('view(.*)_image', r'\1', item_id['view']))
   
   def get_warp_id(self, item_id):
-    raise NotImplementedError()
-  
+    return item_id['global_frame_id']
+
   def get_time_id(self, item_id):
-    raise NotImplementedError()
+    return item_id['global_frame_id']
