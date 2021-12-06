@@ -136,7 +136,7 @@ def load_mujoco_camera(camera_config,
     [0., 0., -1.]],
     dtype=np.float
   )
-  world_to_camera_rot = mujoco_rot_to_camera_rot @ mujoco_rot
+  world_to_camera_rot = mujoco_rot_to_camera_rot @ mujoco_rot.T
   # focal length
   # from https://github.com/ARISE-Initiative/robosuite/blob/2ea2280060033e11f1c1c5fb7c9c127324756005/robosuite/utils/camera_utils.py#L20-L36
   f = 0.5 * camera_config['height'] / np.tan(camera_config['fovy'] * np.pi / 360)
