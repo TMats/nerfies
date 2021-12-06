@@ -6,6 +6,8 @@ from absl import logging
 import cv2
 import numpy as np
 import h5py
+import re
+from sklearn.model_selection import train_test_split
 
 from nerfies import gpath
 from nerfies import types
@@ -41,38 +43,13 @@ def load_scene_info(
 
   return scene_center, scene_scale, near, far
 
-
-def _load_image(path: types.PathType) -> np.ndarray:
-  path = gpath.GPath(path)
-  with path.open('rb') as f:
-    raw_im = np.asarray(bytearray(f.read()), dtype=np.uint8)
-    image = cv2.imdecode(raw_im, cv2.IMREAD_COLOR)[:, :, ::-1]  # BGR -> RGB
-    image = np.asarray(image).astype(np.float32) / 255.0
-    return image
-
-
-def _load_dataset_ids(data_dir: types.PathType) -> Tuple[List[str], List[str]]:
-  """Loads dataset IDs."""
-  dataset_json_path = gpath.GPath(data_dir, 'dataset.json')
-  logging.info('*** Loading dataset IDs from %s', dataset_json_path)
-  with dataset_json_path.open('r') as f:
-    dataset_json = json.load(f)
-    train_ids = dataset_json['train_ids']
-    val_ids = dataset_json['val_ids']
-
-  train_ids = [str(i) for i in train_ids]
-  val_ids = [str(i) for i in val_ids]
-
-  return train_ids, val_ids
-
-
 class RobomimicDataSource(core.DataSource):
   """Data loader for Robomimic datasets."""
 
   def __init__(
       self,
       data_dir,
-      image_scale: int,
+      image_scale: int = 1,
       camera_height: int = 84,
       camera_width: int = 84,
       camera_fovy: float = 45.,
@@ -85,8 +62,7 @@ class RobomimicDataSource(core.DataSource):
     # some images so this gives us the ability to skip invalid images.
     # train_ids, val_ids = _load_dataset_ids(self.data_dir)
 
-    # TODO: FIX placeholder
-    train_ids, val_ids = ['view0', 'view1'], ['view2', 'view3']
+    train_ids, val_ids = self.load_dataset_ids()
     super().__init__(train_ids=train_ids, val_ids=val_ids,
                      **kwargs)
 
@@ -94,7 +70,7 @@ class RobomimicDataSource(core.DataSource):
     # self.scene_center, self.scene_scale, self._near, self._far = \
     #   load_scene_info(self.data_dir)
     self.scene_center, self.scene_scale, self._near, self._far = \
-      np.array([0., 0., 0.]), 1.0, 0.01, 6.0
+      np.array([0., 0., 1.0]), 1.0, 0.01, 6.0
 
     self.image_scale = image_scale
 
@@ -117,7 +93,7 @@ class RobomimicDataSource(core.DataSource):
         }
       )
       self.camera_configs[name] = config
-    metadata_path = self.data_dir / 'metadata.json'
+    metadata_path = self.data_dir / 'multiview_metadata.json'
     self.metadata_dict = None
     if metadata_path.exists():
       with metadata_path.open('r') as f:
@@ -130,14 +106,39 @@ class RobomimicDataSource(core.DataSource):
   @property
   def far(self):
     return self._far
+  
+  def load_dataset_ids(self, seed=1234):
+    demo_spec = {}
+    view_regrex = r'view(\d+)_image'
+    for key in self.data_hdf5['data'].keys():
+      demo_spec[key] = {
+        # assume the number of frames and views is the same for all views within a demo
+        "num_frames": self.data_hdf5['data'][key].attrs['num_samples'],
+        "views": [view_name for view_name in self.data_hdf5['data'][key]['obs'].keys() if re.match(view_regrex, view_name)]
+      }
+    self.demo_spec = demo_spec
+    dataset_ids = []
+    for demo_name, demo in demo_spec.items():
+      for view in demo['views']:
+        for frame_id in range(demo['num_frames']):
+          dataset_ids.append({
+            'demo': demo_name,
+            'view': view,
+            'frame': frame_id,
+          })
+    train_ids, val_ids = train_test_split(dataset_ids, test_size=0.2, random_state=seed)
+    return train_ids, val_ids
 
-  def get_rgb_path(self, item_id):
-    return self.rgb_dir / f'{item_id}.png'
-
-  def load_rgb(self, item_id):
-    return _load_image(self.rgb_dir / f'{item_id}.png')
-    
-  def load_camera(self, camera_id, scale_factor=1.0):
+  def load_rgb(self, item_id: dict) -> np.ndarray:
+    demo_id = item_id['demo']  # demo_X
+    view_id = item_id['view']  # viewX_image
+    frame_id = item_id['frame']
+    image = self.data_hdf5['data/{}/obs/{}'.format(demo_id, view_id)][frame_id]
+    image = image.astype(np.float32) / 255.0
+    return image
+  
+  def load_camera(self, item_id, scale_factor=1.0):
+    camera_id = re.sub('(.*)_image', r'\1', item_id['view'])  # viewX_image -> viewX
     return core.load_mujoco_camera(
       camera_config = self.camera_configs[camera_id],
       scale_factor=scale_factor / self.image_scale,
@@ -152,17 +153,13 @@ class RobomimicDataSource(core.DataSource):
     raise NotImplementedError()
 
   def get_appearance_id(self, item_id):
-    return self.metadata_dict[item_id]['appearance_id']
+    raise NotImplementedError()
 
   def get_camera_id(self, item_id):
-    return self.metadata_dict[item_id]['camera_id']
-
+    raise NotImplementedError()
+  
   def get_warp_id(self, item_id):
-    return self.metadata_dict[item_id]['warp_id']
-
+    raise NotImplementedError()
+  
   def get_time_id(self, item_id):
-    if 'time_id' in self.metadata_dict[item_id]:
-      return self.metadata_dict[item_id]['time_id']
-    else:
-      # Fallback for older datasets.
-      return self.metadata_dict[item_id]['warp_id']
+    raise NotImplementedError()
