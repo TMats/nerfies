@@ -16,7 +16,7 @@
 import collections
 import functools
 import time
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, Union
 
 from absl import app
 from absl import flags
@@ -54,7 +54,7 @@ FLAGS = flags.FLAGS
 
 jax.config.parse_flags_with_absl()
 
-
+# TODO:@tmats this occurs tensorflow.python.framework.errors_impl.InvalidArgumentError
 def compute_multiscale_ssim(image1: jnp.ndarray, image2: jnp.ndarray):
   """Compute the multiscale SSIM metric."""
   image1 = tf.convert_to_tensor(image1)
@@ -67,14 +67,22 @@ def process_batch(*,
                   rng: types.PRNGKey,
                   state: model_utils.TrainState,
                   tag: str,
-                  item_id: str,
+                  item_id: Union[str, dict],
                   step: int,
                   summary_writer: tensorboard.SummaryWriter,
                   render_fn: Any,
                   save_dir: Optional[gpath.GPath],
                   datasource: datasets.DataSource):
   """Process and plot a single batch."""
-  item_id = item_id.replace('/', '_')
+  if isinstance(item_id, str):
+    item_id = item_id.replace('/', '_')
+  elif isinstance(item_id, dict):
+    if isinstance(datasource, datasets.RobomimicDataSource):
+      item_id = '{}_{}_{}'.format(item_id['demo'], item_id['view'], item_id['frame'])
+    else:
+      raise NotImplementedError()
+  else:
+    raise NotImplementedError()
   render = render_fn(state, batch, rng=rng)
   out = {}
   if jax.process_index() != 0:
@@ -119,12 +127,14 @@ def process_batch(*,
     rgb_target = batch['rgb']
     mse = ((rgb - batch['rgb'])**2).mean()
     psnr = utils.compute_psnr(mse)
-    ssim = compute_multiscale_ssim(rgb_target, rgb)
+    # ssim = compute_multiscale_ssim(rgb_target, rgb)  # TODO: fix ssim computation
     out['mse'] = mse
     out['psnr'] = psnr
-    out['ssim'] = ssim
-    logging.info('\tMetrics: mse=%.04f, psnr=%.02f, ssim=%.02f',
-                 mse, psnr, ssim)
+    # out['ssim'] = ssim
+    # logging.info('\tMetrics: mse=%.04f, psnr=%.02f, ssim=%.02f',
+                #  mse, psnr, ssim)
+    logging.info('\tMetrics: mse=%.04f, psnr=%.02f',
+                 mse, psnr)
 
     rgb_abs_error = viz.colorize(
         abs(rgb_target - rgb).sum(axis=-1), cmin=0, cmax=1)

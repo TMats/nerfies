@@ -53,6 +53,7 @@ class RobomimicDataSource(core.DataSource):
       camera_height: int = 84,
       camera_width: int = 84,
       camera_fovy: float = 45.,
+      test_camera_trajectory='orbit-extreme',
       **kwargs):
     self.data_dir = gpath.GPath(data_dir)
     hdf5_path = gpath.GPath(data_dir, 'multiview.hdf5')
@@ -71,6 +72,8 @@ class RobomimicDataSource(core.DataSource):
     #   load_scene_info(self.data_dir)
     self.scene_center, self.scene_scale, self._near, self._far = \
       np.array([0., 0., 1.0]), 1.0, 0.01, 6.0
+
+    self.test_camera_trajectory = test_camera_trajectory
 
     self.image_scale = image_scale
 
@@ -150,7 +153,16 @@ class RobomimicDataSource(core.DataSource):
     )
     
   def load_test_cameras(self, count=None):
-    raise NotImplementedError()
+    camera_dir = (self.data_dir / 'camera-paths' / self.test_camera_trajectory)
+    if not camera_dir.exists():
+      logging.warning('test camera path does not exist: %s', str(camera_dir))
+      return []
+    camera_paths = sorted(camera_dir.glob(f'*{self.camera_ext}'))
+    if count is not None:
+      stride = max(1, len(camera_paths) // count)
+      camera_paths = camera_paths[::stride]
+    cameras = utils.parallel_map(self.load_camera, camera_paths)
+    return cameras
 
   def load_points(self, shuffle=False):
     raise NotImplementedError()
