@@ -62,7 +62,7 @@ class RobomimicDataSource(core.DataSource):
     # some images so this gives us the ability to skip invalid images.
     # train_ids, val_ids = _load_dataset_ids(self.data_dir)
 
-    train_ids, val_ids = self.load_dataset_ids()
+    train_ids, val_ids = self.load_dataset_ids(random_seed=kwargs['random_seed'])
     super().__init__(train_ids=train_ids, val_ids=val_ids,
                      **kwargs)
 
@@ -107,7 +107,7 @@ class RobomimicDataSource(core.DataSource):
   def far(self):
     return self._far
   
-  def load_dataset_ids(self, seed=1234):
+  def load_dataset_ids(self, random_seed=0, val_split=0.2):
     demo_spec = {}
     view_regrex = r'view(\d+)_image'
     for key in self.data_hdf5['data'].keys():
@@ -129,7 +129,7 @@ class RobomimicDataSource(core.DataSource):
             'global_frame_id': global_frame_id,
           })
         global_frame_id += 1
-    train_ids, val_ids = train_test_split(dataset_ids, test_size=0.2, random_state=seed)
+    train_ids, val_ids = train_test_split(dataset_ids, random_state=random_seed, test_size=val_split)
     return train_ids, val_ids
 
   def load_rgb(self, item_id: dict) -> np.ndarray:
